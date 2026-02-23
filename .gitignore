@@ -1,0 +1,8 @@
+.env
+price_history.json
+screenshots/
+monitor.log
+__pycache__/
+*.pyc
+.DS_Store
+.claude/

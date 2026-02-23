@@ -1,0 +1,23 @@
+[
+  {
+    "from": "LAX",
+    "to": "PHX",
+    "date": "2026-03-26",
+    "flights": [
+      {"number": "1713", "departs": "8:20 AM"},
+      {"number": "2416", "departs": "11:15 AM"},
+      {"number": "1571", "departs": "4:05 PM"},
+      {"number": "2008", "departs": "7:05 PM"}
+    ]
+  },
+  {
+    "from": "PHX",
+    "to": "LAX",
+    "date": "2026-03-29",
+    "flights": [
+      {"number": "1218", "departs": "10:00 AM"},
+      {"number": "3688", "departs": "12:00 PM"},
+      {"number": "2658", "departs": "4:15 PM"}
+    ]
+  }
+]
