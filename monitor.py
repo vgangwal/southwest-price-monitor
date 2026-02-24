@@ -18,6 +18,7 @@ flights.json format
     "from": "LAX",
     "to":   "PHX",
     "date": "2026-03-26",
+    "airline": "Southwest",
     "flights": [
       {"number": "2416", "departs": "11:15 AM"},
       {"number": "1571", "departs": "4:05 PM"}
@@ -25,6 +26,7 @@ flights.json format
   }
 ]
 
+  "airline" defaults to "Southwest" if omitted.
   "departs" must match the departure time shown on Google Flights
   (e.g. "8:20 AM", "4:05 PM"). The monitor only tracks and alerts
   on the exact flights you list — nothing else.
@@ -121,10 +123,11 @@ async def _check_all(
     drops: List[Dict] = []
 
     for leg in watchlist:
-        origin = leg["from"].upper().strip()
-        dest   = leg["to"].upper().strip()
-        date   = leg["date"].strip()
-        lk     = _leg_key(origin, dest, date)
+        origin  = leg["from"].upper().strip()
+        dest    = leg["to"].upper().strip()
+        date    = leg["date"].strip()
+        airline = leg.get("airline", "Southwest").strip()
+        lk      = _leg_key(origin, dest, date)
 
         # Build a map: normalized_depart_time → flight number
         # Skip entries where departs is still a placeholder
@@ -145,15 +148,15 @@ async def _check_all(
             print(f"  {origin} → {dest}: no flights with departure times — skipping.")
             continue
 
-        print(f"  Checking {origin} → {dest}  {_fmt_date(date)}...")
+        print(f"  Checking {origin} → {dest}  {_fmt_date(date)}  [{airline}]...")
         print(f"    Watching: {', '.join(f'#{n} ({t})' for t, n in target_map.items())}")
 
         sw_flights = await scrape_google_flights(
-            origin, dest, date, label=f"{origin}-{dest}"
+            origin, dest, date, label=f"{origin}-{dest}", airline=airline
         )
 
         if not sw_flights:
-            print(f"    No Southwest flights found on Google Flights.")
+            print(f"    No {airline} flights found on Google Flights.")
             continue
 
         if lk not in history:
@@ -180,6 +183,7 @@ async def _check_all(
                     drop = old - price
                     print(f"    ↓ DROP  #{flight_number} {f['depart_time']}  ${old:.0f} → ${price:.0f}  (−${drop:.0f})")
                     drops.append({
+                        "airline":       airline,
                         "origin":        origin,
                         "dest":          dest,
                         "date":          date,
@@ -213,19 +217,19 @@ def _send_email(
     drops: List[Dict], gmail_user: str, gmail_pass: str, to_email: str
 ) -> None:
     n = len(drops)
-    subject = f"✈ Southwest price drop — {n} flight{'s' if n > 1 else ''} cheaper"
+    subject = f"✈ Flight price drop — {n} flight{'s' if n > 1 else ''} cheaper"
 
-    lines = ["Southwest prices dropped since the last check:\n"]
+    lines = ["Prices dropped since the last check:\n"]
     for d in drops:
         drop_amt = d["old_price"] - d["new_price"]
         lines.append(
             f"{'─' * 48}\n"
-            f"Flight #{d['flight_number']}   "
+            f"{d['airline']}  Flight #{d['flight_number']}   "
             f"{d['origin']} → {d['dest']}   {_fmt_date(d['date'])}\n"
             f"{d['depart_time']} → {d['arrive_time']}   {d['stops']}\n"
             f"${d['old_price']:.0f}  →  ${d['new_price']:.0f}   (↓ ${drop_amt:.0f})\n"
         )
-    lines += ["─" * 48, "Southwest Price Monitor"]
+    lines += ["─" * 48, "Flight Price Monitor"]
 
     msg = MIMEMultipart()
     msg["From"]    = gmail_user

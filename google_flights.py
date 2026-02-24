@@ -1,11 +1,11 @@
 """
-Google Flights scraper — fetches Southwest Airlines dollar prices.
+Google Flights scraper — fetches airline dollar prices.
 
 Navigates directly to the GF search-results URL using a protobuf-encoded
 `tfs` parameter (no form filling, no fragile selectors).
 
 Public API:
-    flights = await scrape_google_flights(origin, dest, date)
+    flights = await scrape_google_flights(origin, dest, date, airline="Southwest")
     # Returns a list of dicts:
     #   flight_number : str | None
     #   depart_time   : str   e.g. "11:15 AM"
@@ -89,11 +89,11 @@ def _ss(label: str, tag: str) -> Path:
 # ---------------------------------------------------------------------------
 
 async def scrape_google_flights(
-    origin: str, dest: str, date: str, label: str = "leg"
+    origin: str, dest: str, date: str, label: str = "leg", airline: str = "Southwest"
 ) -> List[Dict]:
     """
     Open the GF search-results page for origin→dest on date and return
-    all Southwest Airlines flights found.  Each dict has:
+    all flights from the given airline found.  Each dict has:
         flight_number, depart_time, arrive_time, stops, price_usd
     """
     url = _build_url(origin, dest, date)
@@ -134,7 +134,7 @@ async def scrape_google_flights(
 
             await page.screenshot(path=str(_ss(label, "results")), full_page=True)
 
-            flights = await _parse_southwest(page)
+            flights = await _parse_airline(page, airline)
             return flights
 
         except Exception as exc:
@@ -190,14 +190,15 @@ async def _wait_for_flights(page, timeout: int = 20) -> bool:
 # Parsing
 # ---------------------------------------------------------------------------
 
-async def _parse_southwest(page) -> List[Dict]:
-    """Extract Southwest-only flights from the results page."""
+async def _parse_airline(page, airline: str) -> List[Dict]:
+    """Extract flights for the given airline from the results page."""
+    airline_lc = airline.lower()
     flights: List[Dict] = []
 
     # Strategy 1: aria-labeled <li> elements (most structured)
     for item in await page.query_selector_all("li[aria-label]"):
         aria = (await item.get_attribute("aria-label")) or ""
-        if "southwest" in aria.lower():
+        if airline_lc in aria.lower():
             f = _parse_text(aria)
             if f:
                 flights.append(f)
@@ -205,11 +206,11 @@ async def _parse_southwest(page) -> List[Dict]:
     if flights:
         return _dedup(flights)
 
-    # Strategy 2: any <li> whose inner text mentions Southwest + a price
+    # Strategy 2: any <li> whose inner text mentions the airline + a price
     for item in await page.query_selector_all("li"):
         try:
             text = await item.inner_text()
-            if len(text) > 30 and "southwest" in text.lower() and "$" in text:
+            if len(text) > 30 and airline_lc in text.lower() and "$" in text:
                 f = _parse_text(text)
                 if f:
                     flights.append(f)
@@ -222,7 +223,7 @@ async def _parse_southwest(page) -> List[Dict]:
     # Strategy 3: full page-text scan
     body = await page.evaluate("() => document.body.innerText")
     for i, line in enumerate(body.split("\n")):
-        if "southwest" in line.lower():
+        if airline_lc in line.lower():
             chunk = "\n".join(body.split("\n")[max(0, i - 3): i + 8])
             if "$" in chunk:
                 f = _parse_text(chunk)
@@ -256,9 +257,9 @@ def _parse_text(text: str) -> Optional[Dict]:
         except ValueError:
             pass
 
-    # Flight number — GF may include "WN 2416" or "Flight WN 2416"
+    # Flight number — GF may show "WN 2416", "DL 1234", "Flight DL 1234", etc.
     fn_m = re.search(
-        r"(?:WN|(?:Flight\s+(?:WN\s+)?))\s*#?(\d{3,4})\b", text, re.IGNORECASE
+        r"(?:[A-Z]{2}|Flight(?:\s+[A-Z]{2})?)\s*#?(\d{3,4})\b", text, re.IGNORECASE
     )
     flight_number = fn_m.group(1) if fn_m else None
 
