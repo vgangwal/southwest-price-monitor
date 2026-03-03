@@ -36,6 +36,7 @@ import asyncio
 import json
 import os
 import smtplib
+import socket
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -237,7 +238,10 @@ def _send_email(
     msg["Subject"] = subject
     msg.attach(MIMEText("\n".join(lines), "plain"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+    # Force IPv4 — Railway containers lack IPv6 routing, and smtp.gmail.com
+    # may resolve to an IPv6 address first, causing [Errno 101] ENETUNREACH.
+    ipv4_addr = socket.getaddrinfo("smtp.gmail.com", 465, socket.AF_INET)[0][4][0]
+    with smtplib.SMTP_SSL(ipv4_addr, 465) as smtp:
         smtp.login(gmail_user, gmail_pass)
         smtp.sendmail(gmail_user, to_email, msg.as_string())
 
